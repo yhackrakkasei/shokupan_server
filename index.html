@@ -1,0 +1,10 @@
+var socket = io.connect('http://localhost:3000/');
+
+// 'broadcast'イベントの受信
+socket.on('broadcast', function (data) {
+    console.log(data.message);
+    // 何かする
+});
+
+// メッセージが入った'broadcast'イベントの発信
+socket.emit('broadcast', { message: 'hoge' });

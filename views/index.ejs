@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ぶつかるテストページ</title>
+    <link rel='stylesheet' href='/stylesheets/style.css' />
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/javascripts/jquery-1.8.0.js"></script>
+    <script src="/javascripts/client.js"></script>
+  </head>
+  <body>
+    name: <input type="input" id="name" /><br/>
+    gender: <select id="gender">
+                <option value="male">male</option>
+                <option value="female">female</option>
+            </select><br/>
+    profile: <input type="input" size="50" id="profile" /><br />
+    page: <input type="input" size="50" id="page" />
+
+    <div>
+        <button id="regist">regist</button>
+        <button id="get">get</button>
+        <button id="watching_page">watching_page</button>
+    </div>
+
+    <h3>メッセージ own</h3>
+    <div id="message_own"></div>
+
+    <h3>メッセージ other</h3>
+    <div id="message_other"></div>
+  </body>
+</html>
