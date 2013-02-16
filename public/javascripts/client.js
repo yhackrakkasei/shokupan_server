@@ -4,7 +4,7 @@ jQuery(function($) {
 
     // サーバからメッセージ表示
     socket.on('message', function(data) {
-        $('#message_other').prepend($('<div/>').text("["+data.status+"]"+data.text));
+        $('#message_other').prepend($('<div/>').text(data.text));
     });
 
     // ユーザ登録イベント
