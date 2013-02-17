@@ -1,4 +1,5 @@
 "use strict";
+
 var express = require('express'),
     routes = require('./routes'),
     http = require('http'),
@@ -11,9 +12,7 @@ mongoose.connect('mongodb://localhost/shokupan');
 //ユーザのスキーマ定義
 var UserSchema = new Schema({
     name: {type: String},
-    demographic: {
-        gender: String
-    },
+    gender: {type: String},
     profile: {type: String}
 });
 var User = mongoose.model('User', UserSchema);
@@ -28,20 +27,37 @@ var PageSchema = new Schema({
 });
 var Page = mongoose.model('Page', PageSchema);
 
-// ぶつかった判定のスキーマ定義
-var CrashSchema = new Schema({
+// ぶつかった判定のユーザごとのスキーマ定義
+var CrashUserSchema = new Schema({
     user: {type: String},
     aite: {type: String},
     user_session: {type: String},
     aite_session: {type: String},
     crash_id: {type: String},
+});
+var CrashUser = mongoose.model('CrashUser', CrashUserSchema);
+
+// ぶつかった判定のスキーマ定義
+var CrashSchema = new Schema({
+    crash_id: {type: String},
+    timestamp: {type: Number},
     status: {type: String}
 });
 var Crash = mongoose.model('Crash', CrashSchema);
 
-// ぶつかった後の再会判定のスキーマ定義
+// 再会判定のユーザごとのスキーマ定義
+var ReunionUserSchema = new Schema({
+    user: {type: String},
+    aite: {type: String},
+    user_session: {type: String},
+    aite_session: {type: String},
+    reunion_id: {type: String},
+});
+var ReunionUser = mongoose.model('ReunionUser', ReunionUserSchema);
+
+// 再会判定のスキーマ定義
 var ReunionSchema = new Schema({
-    crash_id: {type: String},
+    reunion_id: {type: String},
     answer: {type: String},
     timestamp: {type: Number},
     status: {type: String}
@@ -75,6 +91,7 @@ server.listen(app.get('port'), function() {
 
 
 var io = require('socket.io').listen(server);
+
 // ロジック本体
 io.sockets.on('connection',function(socket) {
 
@@ -82,7 +99,7 @@ io.sockets.on('connection',function(socket) {
     socket.on('regist', function(data) {
         console.log("[regist]"+data.name);
 
-        User.findOne({name: data.name}, "name profile demographic.gender", function(err, user) {
+        User.findOne({name: data.name}, "name profile gender", function(err, user) {
             if (err !== null) {
                 console.error("error:"+err);
                 socket.json.emit('error', {text:"error:"+err});
@@ -92,7 +109,7 @@ io.sockets.on('connection',function(socket) {
             if (user !== null) {
                 // すでに登録済みの場合は情報アップデート
                 user.profile = data.profile;
-                user.demographic = {gender: data.gender};
+                user.gender = data.gender;
 
                 user.save(function(err) {
                     if (err !== null) {
@@ -108,7 +125,7 @@ io.sockets.on('connection',function(socket) {
                 var new_user = new User({
                     name: data.name,
                     profile : data.profile,
-                    demographic : { gender : data.gender }
+                    gender : data.gender
                 });
 
                 new_user.save(function(err) {
@@ -128,7 +145,7 @@ io.sockets.on('connection',function(socket) {
     socket.on('get_user', function(data) {
         console.log("[get_user]"+data.name);
 
-        User.findOne({name: data.name}, "name profile demographic.gender", function(err, user) {
+        User.findOne({name: data.name}, "name profile gender", function(err, user) {
             if (err !== null) {
                 console.error("error:"+err);
                 socket.json.emit('error', {text:"error:"+err});
@@ -143,7 +160,7 @@ io.sockets.on('connection',function(socket) {
         });
     });
 
-    // 見ているページ確認とぶつかる判定
+    // 見ているページ確認とヒット判定
     socket.on('watching_page', function(data) {
         console.log("[watching_page]"+data.name+":"+data.page);
 
@@ -216,20 +233,20 @@ io.sockets.on('connection',function(socket) {
 
                     // ぶつかった情報を登録
                     // ぶつかった方
-                    Crash.findOne({user: data.name}, "user", function(err, crash) {
+                    CrashUser.findOne({user: data.name}, "user", function(err, user) {
                         if (err !== null) {
                             console.error("error:"+err);
                             socket.json.emit('error', {text:"error:"+err});
                             return;
                         }
 
-                        if (crash !== null) {
-                            crash.crash_id = session_id; // TODOここ適当なので後で直す
-                            crash.aite = page.user;
-                            crash.user_session = session_id;
-                            crash.aite_session = page.session_id;
-                            crash.status = 'crash';
-                            crash.save(function(err) {
+                        if (user !== null) {
+                            // 新規登録
+                            user.crash_id = session_id; // TODO 適当なので後で直す
+                            user.aite = page.user;
+                            user.user_session = session_id;
+                            user.aite_session = page.session_id;
+                            user.save(function(err) {
                                 if (err !== null) {
                                     console.error("error:"+err);
                                     socket.json.emit('error', {text:"error:"+err});
@@ -237,13 +254,13 @@ io.sockets.on('connection',function(socket) {
                                 }
                             });
                         } else {
-                            var crash_user = new Crash({
+                            // アップデート
+                            var crash_user = new CrashUser({
                                 user: data.name,
                                 aite: page.user,
                                 user_session: session_id,
                                 aite_session: page.session_id,
-                                crash_id: session_id, // TODOここ適当なので後で直す
-                                status: 'crash'
+                                crash_id: session_id, // TODO 適当なので後で直す
                             });
                             crash_user.save(function(err) {
                                 if (err !== null) {
@@ -255,20 +272,19 @@ io.sockets.on('connection',function(socket) {
                         }
                     });
                     // ぶつかられた方
-                    Crash.findOne({user: page.user}, "user", function(err, crash) {
+                    CrashUser.findOne({user: page.user}, "user", function(err, user) {
                         if (err !== null) {
                             console.error("error:"+err);
                             socket.json.emit('error', {text:"error:"+err});
                             return;
                         }
 
-                        if (crash !== null) {
-                            crash.crash_id = session_id; // TODOここ適当なので後で直す
-                            crash.aite = data.name;
-                            crash.user_session = page.session_id;
-                            crash.aite_session = session_id;
-                            crash.status = 'crash';
-                            crash.save(function(err) {
+                        if (user !== null) {
+                            user.crash_id = session_id; // TODO 適当なので後で直す
+                            user.aite = data.name;
+                            user.user_session = page.session_id;
+                            user.aite_session = session_id;
+                            user.save(function(err) {
                                 if (err !== null) {
                                     console.error("error:"+err);
                                     socket.json.emit('error', {text:"error:"+err});
@@ -276,13 +292,12 @@ io.sockets.on('connection',function(socket) {
                                 }
                             });
                         } else {
-                            var crashed_user = new Crash({
+                            var crashed_user = new CrashUser({
                                 user: page.user,
                                 aite: data.name,
                                 user_session: page.session_id,
                                 aite_session: session_id,
-                                crash_id: session_id, // TODOここ適当なので後で直す
-                                status: 'crash'
+                                crash_id: session_id, // TODO 適当なので後で直す
                             });
                             crashed_user.save(function(err) {
                                 if (err !== null) {
@@ -293,18 +308,19 @@ io.sockets.on('connection',function(socket) {
                             });
                         }
                     });
+
                     // ぶつかった情報
-                    Reunion.findOne({crash_id: session_id}, "crash_id", function(err, reunion) {
+                    Crash.findOne({crash_id: session_id}, "crash_id", function(err, crash) {
                         if (err !== null) {
                             console.error("error:"+err);
                             socket.json.emit('error', {text:"error:"+err});
                             return;
                         }
 
-                        if (reunion !== null) {
-                            reunion.timestamp = now;
-                            reunion.status = 'crash';
-                            reunion.save(function(err) {
+                        if (crash !== null) {
+                            crash.timestamp = now;
+                            crash.status = 'hit';
+                            crash.save(function(err) {
                                 if (err !== null) {
                                     console.error("error:"+err);
                                     socket.json.emit('error', {text:"error:"+err});
@@ -312,12 +328,12 @@ io.sockets.on('connection',function(socket) {
                                 }
                             });
                         } else {
-                            var reunion = new Reunion({
-                                crash_id: session_id, // TODOここ適当なので後で直す
+                            var crash = new Crash({
+                                crash_id: session_id, // TODO 適当なので後で直す
                                 timestamp: now,
-                                status: 'crash'
+                                status: 'hit'
                             });
-                            reunion.save(function(err) {
+                            crash.save(function(err) {
                                 if (err !== null) {
                                     console.error("error:"+err);
                                     socket.json.emit('error', {text:"error:"+err});
@@ -328,9 +344,9 @@ io.sockets.on('connection',function(socket) {
                     });
 
                     // アクセスしてきた人に返す
-                    socket.json.emit("crash", {text: "crash!!"});
+                    socket.json.emit("hit", {text: "hit!!"});
                     // ぶつかった人に返す
-                    io.sockets.socket(page.session_id).json.emit("crashed", {text: "crashed!!"});
+                    io.sockets.socket(page.session_id).json.emit("hitted", {text: "hitted!!"});
 
                     return;
                 }
@@ -338,23 +354,187 @@ io.sockets.on('connection',function(socket) {
         });
     });
 
-    // 同じページを見ていた人が再会
-    socket.on('reunion', function(data) {
-        console.log("[reunion]"+data.name);
+    // ぶつかる開始
+    socket.on('crash', function(data) {
+        console.log("[crash]"+data.name);
 
-        Crash.findOne({user: data.name, status: 'crash'}, "user aite crash_id status user_session aite_session", function(err, crash) {
+        CrashUser.findOne({user: data.name}, "user aite crash_id user_session aite_session", function(err, user) {
             if (err !== null) {
                 console.error("error:"+err);
                 socket.json.emit('error', {text:"error:"+err});
                 return;
             }
 
-            if (crash === null) {
+            var session_id = socket.id;
+            var now = new Date().getTime();
+
+            if (user === null) {
+                socket.json.emit("nocrash", {text: "zannen"});
+                return;
+            } else {
+                Crash.findOne({crash_id: user.crash_id}, "crash_id status", function(err, crash) {
+                    if (err !== null) {
+                        console.error("error:"+err);
+                        socket.json.emit('error', {text:"error:"+err});
+                        return;
+                    }
+
+                    if (crash === null) {
+                        socket.json.emit("nocrash", {text: "zannen"});
+                        return;
+                    } else {
+                        if (crash.status === 'crash') {
+
+                            // 再会情報を登録
+                            // 再会した方
+                            ReunionUser.findOne({user: data.name}, "user aite user_session aite_session", function(err, r_user) {
+                                if (err !== null) {
+                                    console.error("error:"+err);
+                                    socket.json.emit('error', {text:"error:"+err});
+                                    return;
+                                }
+
+                                if (r_user !== null) {
+                                    // 新規登録
+                                    r_user.reunion_id = session_id; // TODO 適当なので後で直す
+                                    r_user.aite = user.aite;
+                                    r_user.user_session = session_id;
+                                    r_user.aite_session = user.aite_session;
+                                    r_user.save(function(err) {
+                                        if (err !== null) {
+                                            console.error("error:"+err);
+                                            socket.json.emit('error', {text:"error:"+err});
+                                            return;
+                                        }
+                                    });
+                                } else {
+                                    // アップデート
+                                    var reunion_user = new ReunionUser({
+                                        user: data.name,
+                                        aite: user.aite,
+                                        user_session: session_id,
+                                        aite_session: user.aite_session,
+                                        reunion_id: session_id, // TODO 適当なので後で直す
+                                    });
+                                    reunion_user.save(function(err) {
+                                        if (err !== null) {
+                                            console.error("error:"+err);
+                                            socket.json.emit('error', {text:"error:"+err});
+                                            return;
+                                        }
+                                    });
+                                }
+                            });
+                            // 再会された方
+                            ReunionUser.findOne({user: crash.aite}, "user aite user_session aite_session", function(err, r_user) {
+                                if (err !== null) {
+                                    console.error("error:"+err);
+                                    socket.json.emit('error', {text:"error:"+err});
+                                    return;
+                                }
+
+                                if (r_user !== null) {
+                                    r_user.reunion_id = session_id; // TODO 適当なので後で直す
+                                    r_user.aite = data.name;
+                                    r_user.user_session = user.aite_session;
+                                    r_user.aite_session = session_id;
+                                    r_user.save(function(err) {
+                                        if (err !== null) {
+                                            console.error("error:"+err);
+                                            socket.json.emit('error', {text:"error:"+err});
+                                            return;
+                                        }
+                                    });
+                                } else {
+                                    var reunioned_user = new ReunionUser({
+                                        user: user.aite,
+                                        aite: data.name,
+                                        user_session: user.aite_session,
+                                        aite_session: session_id,
+                                        reunion_id: session_id, // TODO 適当なので後で直す
+                                    });
+                                    reunioned_user.save(function(err) {
+                                        if (err !== null) {
+                                            console.error("error:"+err);
+                                            socket.json.emit('error', {text:"error:"+err});
+                                            return;
+                                        }
+                                    });
+                                }
+                            });
+
+                            // 再会した情報
+                            Reunion.findOne({reunion_id: session_id}, "reunion_id timestamp status", function(err, reunion) {
+                                if (err !== null) {
+                                    console.error("error:"+err);
+                                    socket.json.emit('error', {text:"error:"+err});
+                                    return;
+                                }
+
+                                if (reunion !== null) {
+                                    reunion.timestamp = now;
+                                    reunion.status = 'crash';
+                                    reunion.save(function(err) {
+                                        if (err !== null) {
+                                            console.error("error:"+err);
+                                            socket.json.emit('error', {text:"error:"+err});
+                                            return;
+                                        }
+                                    });
+                                } else {
+                                    var reunion = new Reunion({
+                                        reunion_id: session_id, // TODO 適当なので後で直す
+                                        timestamp: now,
+                                        status: 'crash'
+                                    });
+                                    reunion.save(function(err) {
+                                        if (err !== null) {
+                                            console.error("error:"+err);
+                                            socket.json.emit('error', {text:"error:"+err});
+                                            return;
+                                        }
+                                    });
+                                }
+
+                                console.log("[crashed]"+data.name+":"+user.aite);
+                                io.sockets.socket(user.user_session).json.emit("crash", {text: "reunion!!"});
+                                io.sockets.socket(user.aite_session).json.emit("crashed", {text: "reunioned!!"});
+                            });
+
+                        } else if (crash.status === 'hit') {
+                            // まだ片方だけ
+                            crash.status = 'crash';
+                            crash.save(function(err) {
+                                if (err !== null) {
+                                    console.error("error:"+err);
+                                    socket.json.emit('error', {text:"error:"+err});
+                                    return;
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+        });
+    });
+
+    // 同じページを見ていた人が再会
+    socket.on('reunion', function(data) {
+        console.log("[reunion]"+data.name);
+
+        ReunionUser.findOne({user: data.name}, "user aite reunion_id user_session aite_session", function(err, user) {
+            if (err !== null) {
+                console.error("error:"+err);
+                socket.json.emit('error', {text:"error:"+err});
+                return;
+            }
+
+            if (user === null) {
                 socket.json.emit("noreunion", {text: "zannen"});
                 return;
             } else {
-                crash.status = 'reunion';
-                crash.save(function(err) {
+                user.status = 'reunion';
+                user.save(function(err) {
                     if (err !== null) {
                         console.error("error:"+err);
                         socket.json.emit('error', {text:"error:"+err});
@@ -362,7 +542,7 @@ io.sockets.on('connection',function(socket) {
                     }
                 });
 
-                Reunion.findOne({crash_id: crash.crash_id}, "crash_id answer status", function(err, reunion) {
+                Reunion.findOne({reunion_id: user.reunion_id}, "reunion_id answer status", function(err, reunion) {
                     if (err !== null) {
                         console.error("error:"+err);
                         socket.json.emit('error', {text:"error:"+err});
@@ -388,32 +568,33 @@ io.sockets.on('connection',function(socket) {
                                 });
 
                                 // アクセスしてきた人に相手情報を返す
-                                User.findOne({name: crash.aite}, "name demographic.gender profile", function(err, user) {
+                                User.findOne({name: user.aite}, "name gender profile", function(err, r_user) {
                                     if (err !== null) {
                                         console.error("error:"+err);
                                         socket.json.emit('error', {text:"error:"+err});
                                         return;
                                     }
 
-                                    io.sockets.socket(crash.user_session).json.emit("reunion", {text: "reunion!!", profile: user.profile, gender: user.demographic.gender});
+                                    io.sockets.socket(user.user_session).json.emit("reunion", {text: "reunion!!", profile: r_user.profile, gender: r_user.gender});
                                 });
 
                                 // ぶつかった人に自分情報を返す
-                                User.findOne({name: crash.user}, "name demographic.gender profile", function(err, user) {
+                                User.findOne({name: user.user}, "name gender profile", function(err, r_user) {
                                     if (err !== null) {
                                         console.error("error:"+err);
                                         socket.json.emit('error', {text:"error:"+err});
                                         return;
                                     }
 
-                                    io.sockets.socket(crash.aite_session).json.emit("reunion", {text: "reunion!!", profile: user.profile, gender: user.demographic.gender});
+                                    io.sockets.socket(user.aite_session).json.emit("reunion", {text: "reunion!!", profile: r_user.profile, gender: r_user.gender});
                                 });
                             } else {
                                 // 答えが違う
-                                socket.json.emit("noreunion", {text: "zannen"});
+                                io.sockets.socket(user.user_session).json.emit("noreunion", {text: "zannen"});
+                                io.sockets.socket(user.aite_session).json.emit("noreunion", {text: "zannen"});
                             }
 
-                        } else if(reunion.status === 'crash') {
+                        } else if (reunion.status === 'crash') {
                             console.log("[reunion:one]"+data.name);
                             // まだ片方だけ
                             reunion.status = 'reunion';
