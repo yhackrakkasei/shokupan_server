@@ -533,7 +533,6 @@ io.sockets.on('connection',function(socket) {
                 socket.json.emit("noreunion", {text: "zannen"});
                 return;
             } else {
-                user.status = 'reunion';
                 user.save(function(err) {
                     if (err !== null) {
                         console.error("error:"+err);
