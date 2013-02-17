@@ -31,6 +31,7 @@ var Page = mongoose.model('Page', PageSchema);
 // ぶつかった判定のスキーマ定義
 var CrashSchema = new Schema({
     user: {type: String},
+    aite: {type: String},
     user_session: {type: String},
     aite_session: {type: String},
     crash_id: {type: String},
@@ -41,6 +42,7 @@ var Crash = mongoose.model('Crash', CrashSchema);
 // ぶつかった後の再会判定のスキーマ定義
 var ReunionSchema = new Schema({
     crash_id: {type: String},
+    answer: {type: String},
     timestamp: {type: Number},
     status: {type: String}
 });
@@ -223,6 +225,7 @@ io.sockets.on('connection',function(socket) {
 
                         if (crash !== null) {
                             crash.crash_id = session_id; // TODOここ適当なので後で直す
+                            crash.aite = page.user;
                             crash.user_session = session_id;
                             crash.aite_session = page.session_id;
                             crash.status = 'crash';
@@ -236,6 +239,7 @@ io.sockets.on('connection',function(socket) {
                         } else {
                             var crash_user = new Crash({
                                 user: data.name,
+                                aite: page.user,
                                 user_session: session_id,
                                 aite_session: page.session_id,
                                 crash_id: session_id, // TODOここ適当なので後で直す
@@ -260,6 +264,7 @@ io.sockets.on('connection',function(socket) {
 
                         if (crash !== null) {
                             crash.crash_id = session_id; // TODOここ適当なので後で直す
+                            crash.aite = data.name;
                             crash.user_session = page.session_id;
                             crash.aite_session = session_id;
                             crash.status = 'crash';
@@ -273,6 +278,7 @@ io.sockets.on('connection',function(socket) {
                         } else {
                             var crashed_user = new Crash({
                                 user: page.user,
+                                aite: data.name,
                                 user_session: page.session_id,
                                 aite_session: session_id,
                                 crash_id: session_id, // TODOここ適当なので後で直す
@@ -336,7 +342,7 @@ io.sockets.on('connection',function(socket) {
     socket.on('reunion', function(data) {
         console.log("[reunion]"+data.name);
 
-        Crash.findOne({user: data.name, status: 'crash'}, "user crash_id status user_session aite_session", function(err, crash) {
+        Crash.findOne({user: data.name, status: 'crash'}, "user aite crash_id status user_session aite_session", function(err, crash) {
             if (err !== null) {
                 console.error("error:"+err);
                 socket.json.emit('error', {text:"error:"+err});
@@ -356,7 +362,7 @@ io.sockets.on('connection',function(socket) {
                     }
                 });
 
-                Reunion.findOne({crash_id: crash.crash_id}, "crash_id status", function(err, reunion) {
+                Reunion.findOne({crash_id: crash.crash_id}, "crash_id answer status", function(err, reunion) {
                     if (err !== null) {
                         console.error("error:"+err);
                         socket.json.emit('error', {text:"error:"+err});
@@ -368,28 +374,50 @@ io.sockets.on('connection',function(socket) {
                         return;
                     } else {
                         if (reunion.status == 'reunion') {
-                            console.log("[reunion:success]"+data.name);
-                            // 再会実現
-                            reunion.status = 'reunioned';
-                            reunion.save(function(err) {
-                                if (err !== null) {
-                                    console.error("error:"+err);
-                                    socket.json.emit('error', {text:"error:"+err});
-                                    return;
-                                }
-                            });
+                            console.log("[reunion:answer]"+reunion.answer+"="+data.answer);
+                            if (reunion.answer === data.answer) {
+                                console.log("[reunion:success]"+data.name);
+                                // 再会実現
+                                reunion.status = 'reunioned';
+                                reunion.save(function(err) {
+                                    if (err !== null) {
+                                        console.error("error:"+err);
+                                        socket.json.emit('error', {text:"error:"+err});
+                                        return;
+                                    }
+                                });
 
-                            console.log("reunion : return response");
-                            // アクセスしてきた人に返す
-                            io.sockets.socket(crash.user_session).json.emit("reunion", {text: "reunion!!"});
-                            // ぶつかった人に返す
-                            io.sockets.socket(crash.aite_session).json.emit("reunion", {text: "reunion!!"});
-                            console.log("reunion : return response fin");
+                                // アクセスしてきた人に相手情報を返す
+                                User.findOne({name: crash.aite}, "name demographic.gender profile", function(err, user) {
+                                    if (err !== null) {
+                                        console.error("error:"+err);
+                                        socket.json.emit('error', {text:"error:"+err});
+                                        return;
+                                    }
+
+                                    io.sockets.socket(crash.user_session).json.emit("reunion", {text: "reunion!!", profile: user.profile, gender: user.demographic.gender});
+                                });
+
+                                // ぶつかった人に自分情報を返す
+                                User.findOne({name: crash.user}, "name demographic.gender profile", function(err, user) {
+                                    if (err !== null) {
+                                        console.error("error:"+err);
+                                        socket.json.emit('error', {text:"error:"+err});
+                                        return;
+                                    }
+
+                                    io.sockets.socket(crash.aite_session).json.emit("reunion", {text: "reunion!!", profile: user.profile, gender: user.demographic.gender});
+                                });
+                            } else {
+                                // 答えが違う
+                                socket.json.emit("noreunion", {text: "zannen"});
+                            }
 
                         } else if(reunion.status === 'crash') {
                             console.log("[reunion:one]"+data.name);
                             // まだ片方だけ
                             reunion.status = 'reunion';
+                            reunion.answer = data.answer;
                             reunion.save(function(err) {
                                 if (err !== null) {
                                     console.error("error:"+err);
