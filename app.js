@@ -336,7 +336,7 @@ io.sockets.on('connection',function(socket) {
     socket.on('reunion', function(data) {
         console.log("[reunion]"+data.name);
 
-        Crash.findOne({user: data.name, status: 'crash'}, "user crash_id status", function(err, crash) {
+        Crash.findOne({user: data.name, status: 'crash'}, "user crash_id status user_session aite_session", function(err, crash) {
             if (err !== null) {
                 console.error("error:"+err);
                 socket.json.emit('error', {text:"error:"+err});
@@ -368,6 +368,7 @@ io.sockets.on('connection',function(socket) {
                         return;
                     } else {
                         if (reunion.status == 'reunion') {
+                            console.log("[reunion:success]"+data.name);
                             // 再会実現
                             reunion.status = 'reunioned';
                             reunion.save(function(err) {
@@ -378,14 +379,15 @@ io.sockets.on('connection',function(socket) {
                                 }
                             });
 
+                            console.log("reunion : return response");
                             // アクセスしてきた人に返す
                             io.sockets.socket(crash.user_session).json.emit("reunion", {text: "reunion!!"});
                             // ぶつかった人に返す
                             io.sockets.socket(crash.aite_session).json.emit("reunion", {text: "reunion!!"});
-
-                            return;
+                            console.log("reunion : return response fin");
 
                         } else if(reunion.status === 'crash') {
+                            console.log("[reunion:one]"+data.name);
                             // まだ片方だけ
                             reunion.status = 'reunion';
                             reunion.save(function(err) {
@@ -398,7 +400,6 @@ io.sockets.on('connection',function(socket) {
 
                         } else {
                             socket.json.emit("noreunion", {text: "zannen"});
-                            return;
                         }
                     }
                 });
