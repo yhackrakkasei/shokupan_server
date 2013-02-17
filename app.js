@@ -75,7 +75,7 @@ io.sockets.on('connection',function(socket){
                 user.demographic = {gender: data.gender};
 
                 user.save(function(err) {
-                    socket.json.emit('message', {text:"exists:"+user.name});
+                    socket.json.emit('message', {text:"update:"+user.name});
                 });
 
             } else {
