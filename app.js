@@ -372,7 +372,7 @@ io.sockets.on('connection',function(socket) {
                 socket.json.emit("nocrash", {text: "zannen"});
                 return;
             } else {
-                Crash.findOne({crash_id: user.crash_id}, "crash_id user aite status", function(err, crash) {
+                Crash.findOne({crash_id: user.crash_id}, "crash_id status", function(err, crash) {
                     if (err !== null) {
                         console.error("error:"+err);
                         socket.json.emit('error', {text:"error:"+err});
@@ -432,7 +432,7 @@ io.sockets.on('connection',function(socket) {
                                 }
                             });
                             // 再会された方
-                            ReunionUser.findOne({user: crash.aite}, "user aite user_session aite_session", function(err, r_user) {
+                            ReunionUser.findOne({user: user.aite}, "user aite user_session aite_session", function(err, r_user) {
                                 if (err !== null) {
                                     console.error("error:"+err);
                                     socket.json.emit('error', {text:"error:"+err});
